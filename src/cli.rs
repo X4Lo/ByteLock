@@ -54,5 +54,9 @@ pub enum Commands {
         /// Optional: Specify output path
         #[arg(short, long)]
         output: Option<String>,
+
+        /// Encryption algorithm (default: AES-256-GCM)
+        #[arg(short, long, default_value = "AES-256-GCM")]
+        algo: String,
     },
 }

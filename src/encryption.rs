@@ -1,13 +1,15 @@
 use crate::metadataheader::MetadataHeader;
 use argon2::password_hash::SaltString;
+use argon2::{Argon2, PasswordHasher};
+use indicatif::{ProgressBar, ProgressStyle};
 use rand::Rng;
 use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, AES_256_GCM, CHACHA20_POLY1305};
 use ring::rand::{SecureRandom, SystemRandom};
-use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::Path;
-use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier, ParamsBuilder};
+
+static DEBUG: bool = false;
 
 /// Encrypts a file using the specified encryption algorithm.
 ///
@@ -28,6 +30,18 @@ pub fn encrypt_file(
     output: &Option<String>,
     delete_original: bool,
 ) {
+    if DEBUG {
+        println!("------------- DEBUG -------------");
+        println!("Encrypting file: {}", path);
+        println!("Using password: {}", password);
+        println!("Algorithm: {}", algo);
+        println!("Salt Size: {}", salt);
+        println!("Zip Enabled: {}", zip);
+        println!("Output Path: {:?}", output);
+        println!("Delete Original: {}", delete_original);
+        println!("---------------------------------");
+    }
+
     // 1. Validate file existence and ensure it's not a directory.
     if !Path::new(&path).exists() {
         eprintln!("Error: File does not exist at path: {}", path);
@@ -40,14 +54,19 @@ pub fn encrypt_file(
         return;
     }
 
+    println!("Reading file content...");
+
     // 2. Read file content (compression is not implemented yet).
     if zip {}
     let data = fs::read(&path).unwrap_or_else(|_| panic!("Failed to read file: {}", path));
 
+    if DEBUG {
+        println!("Generating cryptographic materials...");
+    }
+
     // 3. Generate cryptographic materials (salt, nonce, keys).
     let salt_vec = generate_salt(salt as usize);
-    // println!("Generated Salt: {:?}", salt_vec);
-    let salt_str = to_hex_string(&salt_vec);
+    // let salt_str = to_hex_string(&salt_vec);
     let nonce = generate_nonce(12).expect("Failed to generate nonce");
     let key = derive_key(&password, &salt_vec);
 
@@ -58,6 +77,10 @@ pub fn encrypt_file(
     let metadata = MetadataHeader::new(salt_vec, nonce.clone(), data.len() as u64, algo.clone());
     let serialized_metadata = metadata.serialize();
 
+    if DEBUG {
+        println!("Encrypting metadata...");
+    }
+
     // 5. Encrypt the metadata and the file content.
     let encrypted_metadata = encrypt(
         &metadata_key,
@@ -67,7 +90,29 @@ pub fn encrypt_file(
     )
     .expect("Failed to encrypt metadata");
 
-    let ciphertext = encrypt(&key, &nonce, &data, &algo).expect("Failed to encrypt file content");
+    println!("Encrypting file content...");
+
+    // Create a progress bar for file encryption
+    let pb = ProgressBar::new(data.len() as u64);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("[{elapsed_precise}] {bar:40.cyan/blue} {bytes}/{total_bytes} ({eta})")
+            .unwrap(),
+    );
+
+    // Encrypt the file content in chunks to update the progress bar
+    let chunk_size = 1024 * 1024; // Process 1 MB at a time
+    let mut ciphertext = Vec::new();
+    for chunk in data.chunks(chunk_size) {
+        let encrypted_chunk = encrypt(&key, &nonce, chunk, &algo).expect("Failed to encrypt chunk");
+        ciphertext.extend_from_slice(&encrypted_chunk);
+        pb.inc(chunk.len() as u64); // Update progress bar
+    }
+    pb.finish_with_message("Encryption complete");
+
+    if DEBUG {
+        println!("Writing encrypted data to output file...");
+    }
 
     // 6. Write the encrypted data to the output file.
     let output_path = output.clone().unwrap_or_else(|| path.clone());
@@ -110,8 +155,18 @@ pub fn encrypt_file(
 pub fn decrypt_file(
     path: String,
     password: String,
+    algo: String,
     output: &Option<String>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), io::Error> {
+    if DEBUG {
+        println!("------------- DEBUG -------------");
+        println!("Decrypting file: {}", path);
+        println!("Using password: {}", password);
+        println!("Algorithm: {}", algo);
+        println!("Output Path: {:?}", output);
+        println!("---------------------------------");
+    }
+
     // 1. Validate file existence and ensure it's not a directory.
     if !Path::new(&path).exists() {
         eprintln!("Error: File does not exist at path: {}", path);
@@ -123,28 +178,40 @@ pub fn decrypt_file(
         return Ok(());
     }
 
+    println!("Reading encrypted file...");
+
     // 2. Read the entire encrypted file into memory.
     let mut input_file = fs::File::open(&path)?;
     let mut buffer = Vec::new();
     input_file.read_to_end(&mut buffer)?;
 
+    if DEBUG {
+        println!("Extracting metadata...");
+    }
+
     // 3. Extract metadata nonce (first 12 bytes).
     let metadata_nonce: [u8; 12] = buffer[..12]
         .try_into()
-        .map_err(|_| "Error: Invalid metadata nonce")?;
+        .map_err(|_| "Error: Invalid metadata nonce")
+        .unwrap();
     let buffer = &buffer[12..];
 
     // 4. Extract metadata length (next 4 bytes).
     let metadata_len: u32 = u32::from_le_bytes(
         buffer[..4]
             .try_into()
-            .map_err(|_| "Error: Invalid metadata length")?,
+            .map_err(|_| "Error: Invalid metadata length")
+            .unwrap(),
     );
     let buffer = &buffer[4..];
 
     // 5. Extract encrypted metadata.
     let encrypted_metadata = &buffer[..metadata_len as usize];
     let buffer = &buffer[metadata_len as usize..];
+
+    if DEBUG {
+        println!("Decrypting metadata...");
+    }
 
     // 6. Decrypt the metadata to retrieve the MetadataHeader.
     let metadata_key = derive_key(&password, "TH!Si5@def4ultS4lt98855".as_bytes());
@@ -155,16 +222,53 @@ pub fn decrypt_file(
         "AES-256-GCM",
     )?;
     let metadata = MetadataHeader::deserialize(&decrypted_metadata)
-        .ok_or("Error: Failed to deserialize metadata")?;
+        .ok_or("Error: Failed to deserialize metadata")
+        .unwrap();
 
     // 7. Derive the key for decrypting the file content.
     let key = derive_key(&password, &metadata.salt);
 
-    // 8. Decrypt the file content.
-    let plaintext = decrypt(&key, &metadata.nonce, buffer, &metadata.algo_type)?;
+    println!("Decrypting file content...");
+
+    // Create a progress bar for file decryption
+    let pb = ProgressBar::new(buffer.len() as u64);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("[{elapsed_precise}] {bar:40.cyan/blue} {bytes}/{total_bytes} ({eta})")
+            .unwrap(),
+    );
+
+    // Determine the authentication tag size
+    let tag_size = match algo.as_str() {
+        "AES-256-GCM" => 16,       // AES-GCM uses a 16-byte tag
+        "ChaCha20-Poly1305" => 16, // ChaCha20-Poly1305 also uses a 16-byte tag
+        _ => {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Unsupported algorithm",
+            ))
+        }
+    };
+
+    // Decrypt the file content in chunks to update the progress bar
+    let chunk_size = 1024 * 1024 + tag_size; // Process 1 MB at a time
+    let mut plaintext = Vec::new();
+
+    for chunk in buffer.chunks(chunk_size) {
+        let decrypted_chunk = decrypt(&key, &metadata.nonce, chunk, &algo)?;
+        plaintext.extend_from_slice(&decrypted_chunk);
+        pb.inc(chunk.len() as u64); // Update progress bar
+    }
+    pb.finish_with_message("Decryption complete");
+
+    if DEBUG {
+        println!("Writing decrypted data to output file...");
+    }
 
     // 9. Write the decrypted content to the output file.
-    let output_path = output.clone().unwrap_or_else(|| format!("dec_{}", path.replace("./", "")));
+    let output_path = output
+        .clone()
+        .unwrap_or_else(|| format!("dec_{}", path.replace("./", "")));
     fs::write(&output_path, &plaintext)?;
 
     println!("File decrypted successfully: {}", output_path);
@@ -205,14 +309,10 @@ fn derive_key(password: &str, salt: &[u8]) -> Vec<u8> {
         .build()
         .unwrap();
 
-    let argon2 = Argon2::new(
-        argon2::Algorithm::Argon2id,
-        argon2::Version::V0x13,
-        params,
-    );
+    let argon2 = Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
 
     // Encode the raw salt bytes into a SaltString
-    let salt_string = SaltString::b64_encode(salt).expect("Failed to encode salt");
+    let salt_string = SaltString::encode_b64(salt).expect("Failed to encode salt");
     // println!("Encoded Salt: {}", salt_string);
 
     // Hash the password with the encoded salt
@@ -221,11 +321,6 @@ fn derive_key(password: &str, salt: &[u8]) -> Vec<u8> {
         .expect("Failed to hash password");
 
     password_hash.hash.unwrap().as_ref().to_vec()
-}
-
-/// Converts a byte slice to a hexadecimal string.
-fn to_hex_string(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
 /// Encrypts plaintext data using the specified algorithm.
