@@ -1,135 +1,154 @@
-# ByteLock - A File Encryption CLI Tool
+# 🔒 ByteLock
 
 ## Table of Contents
-1. [Introduction](#introduction)
-2. [Features](#features)
-3. [Installation](#installation)
-4. [Usage](#usage)
-5. [Commands](#commands)
-6. [Examples](#examples)
-7. [Contributing](#contributing)
-8. [License](#license)
+- [🔒 ByteLock](#-bytelock)
+  - [Table of Contents](#table-of-contents)
+  - [About ByteLock](#about-bytelock)
+  - [Key Features](#key-features)
+  - [Getting Started](#getting-started)
+    - [Prerequisites](#prerequisites)
+    - [Installation Options](#installation-options)
+      - [Option 1: From Source](#option-1-from-source)
+      - [Option 2: Precompiled Binaries](#option-2-precompiled-binaries)
+  - [Usage](#usage)
+    - [Encrypting a File](#encrypting-a-file)
+    - [Decrypting a File](#decrypting-a-file)
+    - [Command-Line Help](#command-line-help)
+  - [Security Architecture](#security-architecture)
+  - [Contributing](#contributing)
+  - [License](#license)
+  - [Acknowledgments](#acknowledgments)
+  - [Contact](#contact)
 
-## Introduction
+## About ByteLock
 
-`ByteLock.exe` is a command-line tool written in Rust for encrypting and decrypting files. It supports various encryption algorithms, optional ZIP compression, and custom output paths. The tool uses a custom binary format for storing metadata securely, making it harder for unauthorized users to interpret the encrypted data.
+ByteLock is a simple yet powerful CLI tool designed to encrypt and decrypt files using industry-standard encryption algorithms. It leverages modern cryptographic techniques such as AES-256-GCM and ChaCha20-Poly1305, ensuring your data remains secure. Whether you need to protect sensitive documents or share encrypted files, ByteLock provides an easy-to-use interface for all your encryption needs.
 
-## Features
+## Key Features
 
-- **Encryption and Decryption**: Securely encrypt and decrypt files using passwords.
-- **ZIP Compression**: Optionally compress files before encryption.
-- **Custom Output Paths**: Save encrypted or decrypted files to a specified location.
-- **Delete Original Files**: Automatically delete the original file after encryption or decryption.
-- **Algorithm Selection**: Choose from multiple encryption algorithms (e.g., AES, ChaCha20).
-- **Custom Binary Format**: Metadata is stored in a compact, secure binary format.
+- **Secure Encryption**: Utilizes AES-256-GCM and ChaCha20-Poly1305 algorithms.
+- **Customizable Salt Size**: Supports salt sizes of 16, 32, and 64 bytes for added security.
+- **Compression Option**: Optionally compress files before encryption (feature coming soon).
+- **Progress Tracking**: Displays progress bars during encryption and decryption processes.
+- **Output Flexibility**: Allows specifying custom output paths for encrypted/decrypted files.
+- **Delete Original**: Option to automatically delete the original file after encryption.
+- **Cross-Platform Support**: Works seamlessly on Windows, macOS, and Linux.
 
-## Installation
+## Getting Started
 
 ### Prerequisites
-- Rust and Cargo installed on your system. You can install them from [rustup.rs](https://rustup.rs/).
 
-### Building from Source
+Before using ByteLock, ensure you have the following installed:
+
+- **Rust**: Install Rust by following the instructions at [rust-lang.org](https://www.rust-lang.org/tools/install).
+- **Cargo**: Comes bundled with Rust; used to build and manage the project.
+
+### Installation Options
+
+#### Option 1: From Source
+
 1. Clone the repository:
 ```bash
-git clone https://github.com/your-repo/crypt.git
-cd crypt
+git clone https://github.com/X4Lo/ByteLock.git
+cd ByteLock
 ```
+
 2. Build the project:
 ```bash
 cargo build --release
 ```
-3. The executable will be located in `target/release/ByteLock.exe`.
 
-### Using Precompiled Binaries
-Download the latest release from the [releases page](https://github.com/your-repo/crypt/releases) and place it in your system's PATH.
+3. Run the executable:
+```bash
+./target/release/bytelock
+```
 
+#### Option 2: Precompiled Binaries
+
+Download the latest release from the [Releases Page](https://github.com/X4Lo/ByteLock/releases) and extract it to your desired location.
 
 ## Usage
 
-The general syntax for using `ByteLock.exe` is:
+### Encrypting a File
 
 ```bash
-ByteLock.exe <command> [options]
+bytelock crypt <file_path> --password <your_password> --output <output_path> --algo AES-256-GCM --zip --delete-original --salt 32
 ```
 
-Run the tool with the `--help` flag to see all available options:
+**Example:**
+```bash
+bytelock crypt document.txt --password mysecurepassword --output encrypted_document.bytelock --algo AES-256-GCM --salt 32
+```
+
+### Decrypting a File
 
 ```bash
-ByteLock.exe --help
+bytelock decrypt <encrypted_file_path> --password <your_password> --output <output_path> --algo AES-256-GCM
 ```
 
-## Commands
-
-### Encryption (`--crypt`)
-Encrypts a file using a password.
-
-#### Options:
-- `--password <password>`: The password used for encryption.
-- `--zip`: Compress the file using ZIP before encryption.
-- `--output <output-path>`: Specify the output path for the encrypted file.
-- `--delete-original`: Delete the original file after encryption.
-- `--algo <algo>`: Specify the encryption algorithm (default: AES).
-
-#### Example:
+**Example:**
 ```bash
-ByteLock.exe --crypt --password mysecurepassword --zip --output encrypted_file.bin input_file.txt
+bytelock decrypt encrypted_document.bytelock --password mysecurepassword --output decrypted_document.txt --algo AES-256-GCM
 ```
 
-### Decryption (`--decrypt`)
-Decrypts a file using a password.
+### Command-Line Help
 
-#### Options:
-- `--password <password>`: The password used for decryption.
-- `--output <output-path>`: Specify the output path for the decrypted file.
-
-#### Example:
+For more details, use the `--help` flag:
 ```bash
-ByteLock.exe --decrypt --password mysecurepassword --output decrypted_file.txt encrypted_file.bin
+bytelock --help
 ```
 
-## Examples
+## Security Architecture
 
-### Encrypt a File
-Encrypt a file named `data.txt` using the password `mysecurepassword`:
-```bash
-ByteLock.exe --crypt --password mysecurepassword data.txt
-```
+ByteLock employs a robust multi-layered approach to ensure the security and integrity of your data. Here's an overview of its architecture:
 
-### Encrypt and Compress a File
-Encrypt and compress a file named `data.txt` using the password `mysecurepassword`:
-```bash
-ByteLock.exe --crypt --password mysecurepassword --zip data.txt
-```
+1. **File Structure**:
+   - Encrypted files generated by ByteLock consist of three main components:
+     1. **Metadata Nonce**: A randomly generated nonce used for encrypting the metadata.
+     2. **Encrypted Metadata**: The serialized metadata header, encrypted using AES-256-GCM with the metadata nonce.
+     3. **Encrypted Content**: The actual file content, encrypted in chunks using the specified algorithm (e.g., AES-256-GCM or ChaCha20-Poly1305).
 
-### Encrypt and Save to a Custom Output Path
-Encrypt a file named `data.txt` and save the result as `encrypted_data.bin`:
-```bash
-ByteLock.exe --crypt --password mysecurepassword --output encrypted_data.bin data.txt
-```
+2. **Encryption Process**:
+   - **Chunk-Based Encryption**: To handle large files efficiently, ByteLock divides the file content into chunks of 1 MB each. Each chunk is encrypted independently, ensuring that even large files can be processed without excessive memory usage.
+   - **Progress Tracking**: A progress bar is displayed during the encryption process, showing the percentage of completion and estimated time remaining.
 
-### Delete the Original File After Encryption
-Encrypt a file named `data.txt` and delete the original file:
-```bash
-ByteLock.exe --crypt --password mysecurepassword --delete-original data.txt
-```
+3. **Cryptographic Materials**:
+   - **Salt Generation**: A random salt is generated for each encryption operation, preventing rainbow table attacks.
+   - **Nonce Management**: Unique nonces are generated for both metadata encryption and content encryption to ensure message uniqueness.
+   - **Key Derivation**: Password-based key derivation uses Argon2id with configurable memory cost, time cost, and parallelism, making it resistant to brute-force attacks.
 
-### Decrypt a File
-Decrypt a file named `encrypted_data.bin` using the password `mysecurepassword`:
-```bash
-ByteLock.exe --decrypt --password mysecurepassword encrypted_data.bin
-```
+4. **Authentication**:
+   - Both metadata and file content are encrypted using authenticated encryption algorithms (AES-256-GCM or ChaCha20-Poly1305), ensuring data integrity and preventing tampering.
 
-### Decrypt and Save to a Custom Output Path
-Decrypt a file named `encrypted_data.bin` and save the result as `decrypted_data.txt`:
-```bash
-ByteLock.exe --decrypt --password mysecurepassword --output decrypted_data.txt encrypted_data.bin
-```
+5. **Decryption Process**:
+   - During decryption, ByteLock first extracts and decrypts the metadata to retrieve the necessary cryptographic parameters (e.g., salt, nonce). It then decrypts the file content in chunks, reconstructing the original file.
+
+By adhering to modern cryptographic best practices, ByteLock ensures that your data remains secure and protected against unauthorized access. 
 
 ## Contributing
 
- Contributions are welcome! If you'd like to contribute, please fork the repository and create a pull request. For major changes, please open an issue first to discuss what you'd like to change.
+We welcome contributions from the community! Whether you're fixing bugs, improving documentation, or adding new features, every contribution helps make **ByteLock** better.
+
+To contribute:
+
+1. Fork the repository.
+2. Create a new branch: `git checkout -b feature/new-feature`.
+3. Make your changes and commit them: `git commit -m "Add new feature"`.
+4. Push to the branch: `git push origin feature/new-feature`.
+5. Submit a pull request.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
 
 ## Acknowledgments
 
-- Thanks to the Rust community for creating such a powerful and safe programming language.
-- Special thanks to the creators of cryptographic libraries and tools used in this project.
+- Special thanks to the Rust community for their invaluable resources and tools.
+
+## Contact
+
+For questions, feedback, or collaboration opportunities, feel free to reach out:
+
+- **Name**: X4Lo
+- **Email**: X4Lo@pm.me
+- **GitHub**: [X4Lo](https://github.com/X4Lo)
