@@ -1,8 +1,13 @@
 mod cli;
+mod encryption;
+mod metadataheader;
 
 use clap::Parser;
 use cli::Cli;
 use cli::Commands;
+
+use encryption::decrypt_file;
+use encryption::encrypt_file;
 
 static DEBUG: bool = true;
 
@@ -13,11 +18,11 @@ fn main() {
         Commands::Crypt {
             path,
             password,
-            output,
             algo,
-            zip,
-            delete_original,
             salt,
+            zip,
+            ref output,
+            delete_original,
         } => {
             if DEBUG {
                 println!("------------- DEBUG -------------");
@@ -38,16 +43,24 @@ fn main() {
                 println!("----------- EOF DEBUG -----------");
             }
 
-            // TODO: encryption logic
+            encrypt_file(
+                path,
+                password,
+                algo,
+                salt.parse().unwrap(),
+                zip,
+                &output,
+                delete_original,
+            );
         }
         Commands::Decrypt {
             path,
             password,
-            output,
+            ref output,
         } => {
             if DEBUG {
                 println!("------------- DEBUG -------------");
-                println!("Encrypting file: {}", path);
+                println!("Decrypting file: {}", path);
                 println!("Using password: {}", password);
                 if let Some(output_path) = output {
                     println!("Output path: {}", output_path);
@@ -55,8 +68,7 @@ fn main() {
                 println!("----------- EOF DEBUG -----------");
             }
 
-            // TODO: decryption logic
+            decrypt_file(path, password, &output).expect("Couldn't decrypt the file.");
         }
     }
 }
-

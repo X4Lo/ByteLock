@@ -3,5 +3,17 @@ name = "ByteLock"
 version = "0.1.0"
 edition = "2021"
 
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+mimalloc = "0.1"
+
+[profile.release]
+lto = true  # Enables link-time optimization
+codegen-units = 1  # Minimizes parallelism during compilation for better optimization
+
 [dependencies]
+aes-gcm = "0.10"
+sha2 = "0.10"
 clap = { version = "4.4", features = ["derive"] }
+rand = "0.8"
+ring = "0.17"
+argon2 = { version = "0.5", features = ["password-hash"] }
